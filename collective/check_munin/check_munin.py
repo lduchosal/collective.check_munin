@@ -12,8 +12,7 @@ import subprocess
 import sys
 import time
 
-
-def readRRDData(fn):
+def readRRDData(fn, continueonstale):
     try:
         s = subprocess.check_output(['rrdtool', 'lastupdate', fn, ])
     except subprocess.CalledProcessError:
@@ -22,7 +21,10 @@ def readRRDData(fn):
     mtime, value = s.decode().split('\n')[2].split(':')
     if time.time() - float(mtime) > 600:
         print("%s has stale data." % fn)
-        sys.exit(3)
+        # print("continueonstale: %s" % continueonstale)
+        if continueonstale < 1:
+           sys.exit(3)
+
     v = value.strip()
     if v.find("0x") == 0 :
         v = int(v, 16)
@@ -38,6 +40,7 @@ class RRD(nagiosplugin.Resource):
         self.module = args.module
         self.only = args.only
         self.ignore = args.ignore
+        self.continueonstale = args.continueonstale
         domain = args.domain
         if not domain:
            domain = re.sub(r'^[^\.]+\.', '', args.hostname)
@@ -53,21 +56,28 @@ class RRD(nagiosplugin.Resource):
         myfiles = glob.glob(myglob)
         myfiles.sort()
         for fn in myfiles:
+            # print('file: %s' % fn)
             component_pattern = re.compile(r"^.+/%s-%s-(.+)-([a-z])\.rrd$" % (self.hostname, self.module))
+            # print(component_pattern)
             mo = component_pattern.match(fn)
             if mo:
                 component = mo.group(1)
                 typedata = mo.group(2)
+                # print('component: %s' % component)
                 # print('typedata: %s' % typedata)
+                # print('ignore: %s' % self.ignore)
+                # print('continueonstale: %s' % self.continueonstale)
                 if component not in self.ignore:
                     component = component.replace('_', '/')
                     # note that we check ignore again in case it was specified with /s
                     if component not in self.ignore:
                         logging.info('reading %s', component)
-                        data = readRRDData(fn)
+                        data = readRRDData(fn, self.continueonstale)
+                        # print('data: %s' % data)
+
                         if typedata == 'd':
                             data = data / (1024 * 1024) / 127 * 100
-                        yield nagiosplugin.Metric(component, readRRDData(fn), min=0, context='munin')
+                        yield nagiosplugin.Metric(component, data, min=0, context='munin')
 
 
 @nagiosplugin.guarded
@@ -76,6 +86,8 @@ def main():
     argp.add_argument('-d', '--domain', default='')
     argp.add_argument('-H', '--hostname', required=True, default='')
     argp.add_argument('-M', '--module', required=True, default='')
+    argp.add_argument('-C', '--continueonstale', action='count', default=0,
+                      help='keep on running if stale data is found)')
     argp.add_argument('-o', '--only', default='*',
                       help='restrict to a subcomponent of module')
     argp.add_argument('-i', '--ignore', action='append', default=[],
@@ -96,6 +108,7 @@ def main():
         nagiosplugin.ScalarContext('munin', args.warning, args.critical),
         )
     check.name = args.name or args.module
+    check.continueonstale = args.continueonstale
     check.main(verbose=args.verbose)
 
 if __name__ == '__main__':
