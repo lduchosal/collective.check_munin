@@ -20,11 +20,12 @@ def readRRDData(fn, continueonstale):
         sys.exit(3)
     mtime, value = s.decode().split('\n')[2].split(':')
     if time.time() - float(mtime) > 600:
-        print("%s has stale data." % fn)
         # print("continueonstale: %s" % continueonstale)
         if continueonstale < 1:
+           print("%s has stale data." % fn)
            sys.exit(3)
-
+           print("stopping")
+            
     v = value.strip()
     if v.find("0x") == 0 :
         v = int(v, 16)
