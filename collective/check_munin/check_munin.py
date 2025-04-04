@@ -24,7 +24,6 @@ def readRRDData(fn, continueonstale):
         if continueonstale < 1:
            print("%s has stale data." % fn)
            sys.exit(3)
-           print("stopping")
             
     v = value.strip()
     if v.find("0x") == 0 :
